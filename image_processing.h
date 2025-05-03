@@ -31,7 +31,7 @@ typedef struct {
 } DIBHeader;
 #pragma pack(pop)
 
-void invertirHorizontalGrises(const char *entrada, const char *salida, FILE *log);
-void invertirHorizontalColor(const char *entrada, const char *salida, FILE *log);
+void invertirHorizontalGrises(const char *entrada, const char *salida, FILE *log, unsigned long *lecturas, unsigned long *escrituras);
+void invertirHorizontalColor(const char *entrada, const char *salida, FILE *log, unsigned long *lecturas, unsigned long *escrituras);
 
 #endif // IMAGE_PROCESSING_H
