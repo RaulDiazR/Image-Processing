@@ -1,5 +1,6 @@
 // image_processing.c
 #include "image_processing.h"
+#include <omp.h>
 
 static void logError(FILE *log, const char *msg) {
     if (log) fprintf(log, "Error: %s\n", msg);
@@ -31,39 +32,55 @@ void invertirHorizontalGrises(const char *entrada, const char *salida, FILE *log
     }
 
     int padding = (4 - (dib.width * 3) % 4) % 4;
-    uint8_t *row = malloc(dib.width * 3);
-    if (!row) {
+    size_t rowSize = dib.width * 3 + padding;
+    size_t imageSize = rowSize * dib.height;
+    
+    uint8_t *buffer = malloc(imageSize);
+    if (!buffer) {
         fclose(fin); fclose(fout);
         logError(log, "Memoria insuficiente.");
         return;
     }
 
-    for (int y = 0; y < dib.height; y++) {
-        fread(row, 3, dib.width, fin);
-        *lecturas += dib.width * 3;
-        fseek(fin, padding, SEEK_CUR);
-        *lecturas += padding;
+    fread(buffer, 1, imageSize, fin);
+    *lecturas += imageSize;
+    fclose(fin);
 
-        for (int x = dib.width - 1; x >= 0; x--) {
-            uint8_t r = row[x*3+2];
-            uint8_t g = row[x*3+1];
-            uint8_t b = row[x*3+0];
+    // Crear un buffer de salida
+    uint8_t *output = malloc(imageSize);
+    if (!output) {
+        free(buffer);
+        fclose(fout);
+        logError(log, "Memoria insuficiente.");
+        return;
+    }
+
+    #pragma omp parallel for
+    for (int y = 0; y < dib.height; y++) {
+        uint8_t *srcRow = buffer + y * rowSize;
+        uint8_t *dstRow = output + y * rowSize;
+
+        for (int x = 0; x < dib.width; x++) {
+            int invX = dib.width - 1 - x;
+            uint8_t r = srcRow[invX*3+2];
+            uint8_t g = srcRow[invX*3+1];
+            uint8_t b = srcRow[invX*3+0];
             uint8_t gray = (uint8_t)(0.21*r + 0.72*g + 0.07*b);
 
-            fputc(gray, fout);
-            fputc(gray, fout);
-            fputc(gray, fout);
-            *escrituras += 3;
+            dstRow[x*3+0] = gray;
+            dstRow[x*3+1] = gray;
+            dstRow[x*3+2] = gray;
         }
-
         for (int p = 0; p < padding; p++) {
-            fputc(0x00, fout);
-            *escrituras += 1;
+            dstRow[dib.width*3 + p] = 0x00;
         }
     }
 
-    free(row);
-    fclose(fin);
+    fwrite(output, 1, imageSize, fout);
+    *escrituras += imageSize;
+
+    free(buffer);
+    free(output);
     fclose(fout);
 }
 
@@ -93,34 +110,49 @@ void invertirHorizontalColor(const char *entrada, const char *salida, FILE *log,
     }
 
     int padding = (4 - (dib.width * 3) % 4) % 4;
-    uint8_t *row = malloc(dib.width * 3);
-    if (!row) {
-        fclose(fin);
+    size_t rowSize = dib.width * 3 + padding;
+    size_t imageSize = rowSize * dib.height;
+    
+    uint8_t *buffer = malloc(imageSize);
+    if (!buffer) {
+        fclose(fin); fclose(fout);
+        logError(log, "Memoria insuficiente.");
+        return;
+    }
+
+    fread(buffer, 1, imageSize, fin);
+    *lecturas += imageSize;
+    fclose(fin);
+
+    // Crear un buffer de salida
+    uint8_t *output = malloc(imageSize);
+    if (!output) {
+        free(buffer);
         fclose(fout);
         logError(log, "Memoria insuficiente.");
         return;
     }
 
+    #pragma omp parallel for
     for (int y = 0; y < dib.height; y++) {
-        fread(row, 3, dib.width, fin);
-        *lecturas += dib.width * 3;
-        fseek(fin, padding, SEEK_CUR);
-        *lecturas += padding;
-
-        for (int x = dib.width - 1; x >= 0; x--) {
-            fputc(row[x*3+0], fout);
-            fputc(row[x*3+1], fout);
-            fputc(row[x*3+2], fout);
-            *escrituras += 3;
+        uint8_t *srcRow = buffer + y * rowSize;
+        uint8_t *dstRow = output + y * rowSize;
+    
+        for (int x = 0; x < dib.width; x++) {
+            int invX = dib.width - 1 - x;
+            dstRow[x*3+0] = srcRow[invX*3+0];
+            dstRow[x*3+1] = srcRow[invX*3+1];
+            dstRow[x*3+2] = srcRow[invX*3+2];
         }
-
         for (int p = 0; p < padding; p++) {
-            fputc(0x00, fout);
-            *escrituras += 1;
+            dstRow[dib.width*3 + p] = 0x00;
         }
     }
 
-    free(row);
-    fclose(fin);
+    fwrite(output, 1, imageSize, fout);
+    *escrituras += imageSize;
+
+    free(buffer);
+    free(output);
     fclose(fout);
 }
