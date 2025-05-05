@@ -29,16 +29,24 @@ int main() {
         char salidaColor[256];
         snprintf(salidaColor, sizeof(salidaColor), "./processed/image%d_horizontal_color.bmp", i);
 
+        char salidaDesenfoque[256];
+        snprintf(salidaDesenfoque, sizeof(salidaDesenfoque), "./processed/image%d_blur.bmp", i);
+        
         unsigned long lecturasGrises = 0, escriturasGrises = 0;
         unsigned long lecturasColor = 0, escriturasColor = 0;
+        unsigned long lecturasBlur = 0, escriturasBlur = 0;
 
         invertirHorizontalGrises(entrada, salidaGrises, log, &lecturasGrises, &escriturasGrises);
         invertirHorizontalColor(entrada, salidaColor, log, &lecturasColor, &escriturasColor);
+        aplicarDesenfoqueIntegral(entrada, salidaDesenfoque, 90, log, &lecturasBlur, &escriturasBlur);
 
         totalLecturas += lecturasGrises + lecturasColor;
         totalEscrituras += escriturasGrises + escriturasColor;
 
-        printf("\rProcesando imagenes: %d/%d completadas...", i, NUM_IMAGENES);
+        totalLecturas += lecturasBlur;
+        totalEscrituras += escriturasBlur;
+
+        printf("\rProcesando imagenes: %d/%d completadas...", i, 1);
         fflush(stdout);
     }
 
