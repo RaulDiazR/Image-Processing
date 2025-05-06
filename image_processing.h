@@ -34,5 +34,5 @@ typedef struct {
 void invertirHorizontalGrises(const char *entrada, const char *salida, FILE *log, unsigned long *lecturas, unsigned long *escrituras);
 void invertirHorizontalColor(const char *entrada, const char *salida, FILE *log, unsigned long *lecturas, unsigned long *escrituras);
 void aplicarDesenfoqueIntegral(const char *entrada, const char *salida, int kernelSize, FILE *log, unsigned long *lecturas, unsigned long *escrituras);
-
+void convertirAGrises(const char *entrada, const char *salida, FILE *log, unsigned long *lecturas, unsigned long *escrituras);
 #endif // IMAGE_PROCESSING_H

@@ -3,7 +3,7 @@
 #include <time.h>
 #include <string.h>
 
-#define NUM_IMAGENES 100
+#define NUM_IMAGENES 1
 
 void formatNumberWithCommas(unsigned long num, char *buffer);
 
@@ -31,20 +31,27 @@ int main() {
 
         char salidaDesenfoque[256];
         snprintf(salidaDesenfoque, sizeof(salidaDesenfoque), "./processed/image%d_blur.bmp", i);
+
+        char salidaGrises[256];
+        snprintf(salidaGrises, sizeof(salidaGrises), "./processed/image%d_gris.bmp", i);
         
         unsigned long lecturasHorizontalGrises = 0, escriturasHorizontalGrises = 0;
         unsigned long lecturasHorizontalColor = 0, escriturasHorizontalColor = 0;
         unsigned long lecturasBlur = 0, escriturasBlur = 0;
+        unsigned long lecturasGrises = 0, escriturasGrises = 0;
 
         invertirHorizontalGrises(entrada, salidaHorizontalGrises, log, &lecturasHorizontalGrises, &escriturasHorizontalGrises);
         invertirHorizontalColor(entrada, salidaHorizontalColor, log, &lecturasHorizontalColor, &escriturasHorizontalColor);
         aplicarDesenfoqueIntegral(entrada, salidaDesenfoque, 90, log, &lecturasBlur, &escriturasBlur);
+        convertirAGrises(entrada, salidaGrises, log, &lecturasGrises, &escriturasGrises);
 
         totalLecturas += lecturasHorizontalGrises + lecturasHorizontalColor;
         totalEscrituras += escriturasHorizontalGrises + escriturasHorizontalColor;
+        totalLecturas += lecturasGrises;
 
         totalLecturas += lecturasBlur;
         totalEscrituras += escriturasBlur;
+        totalEscrituras += escriturasGrises;
 
         printf("\rProcesando imagenes: %d/%d completadas...", i, 100);
         fflush(stdout);
