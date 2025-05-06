@@ -5,7 +5,7 @@
 
 #define NUM_IMAGENES 100
 
-void formatNumberWithCommas(unsigned long num, char *buffer); // 👈 Prototipo agregado
+void formatNumberWithCommas(unsigned long num, char *buffer);
 
 int main() {
     FILE *log = fopen("log.txt", "w");
@@ -23,30 +23,30 @@ int main() {
         char entrada[256];
         snprintf(entrada, sizeof(entrada), "./images/image%d.bmp", i);
 
-        char salidaGrises[256];
-        snprintf(salidaGrises, sizeof(salidaGrises), "./processed/image%d_horizontal_gris.bmp", i);
+        char salidaHorizontalGrises[256];
+        snprintf(salidaHorizontalGrises, sizeof(salidaHorizontalGrises), "./processed/image%d_horizontal_gris.bmp", i);
 
-        char salidaColor[256];
-        snprintf(salidaColor, sizeof(salidaColor), "./processed/image%d_horizontal_color.bmp", i);
+        char salidaHorizontalColor[256];
+        snprintf(salidaHorizontalColor, sizeof(salidaHorizontalColor), "./processed/image%d_horizontal_color.bmp", i);
 
         char salidaDesenfoque[256];
         snprintf(salidaDesenfoque, sizeof(salidaDesenfoque), "./processed/image%d_blur.bmp", i);
         
-        unsigned long lecturasGrises = 0, escriturasGrises = 0;
-        unsigned long lecturasColor = 0, escriturasColor = 0;
+        unsigned long lecturasHorizontalGrises = 0, escriturasHorizontalGrises = 0;
+        unsigned long lecturasHorizontalColor = 0, escriturasHorizontalColor = 0;
         unsigned long lecturasBlur = 0, escriturasBlur = 0;
 
-        invertirHorizontalGrises(entrada, salidaGrises, log, &lecturasGrises, &escriturasGrises);
-        invertirHorizontalColor(entrada, salidaColor, log, &lecturasColor, &escriturasColor);
+        invertirHorizontalGrises(entrada, salidaHorizontalGrises, log, &lecturasHorizontalGrises, &escriturasHorizontalGrises);
+        invertirHorizontalColor(entrada, salidaHorizontalColor, log, &lecturasHorizontalColor, &escriturasHorizontalColor);
         aplicarDesenfoqueIntegral(entrada, salidaDesenfoque, 90, log, &lecturasBlur, &escriturasBlur);
 
-        totalLecturas += lecturasGrises + lecturasColor;
-        totalEscrituras += escriturasGrises + escriturasColor;
+        totalLecturas += lecturasHorizontalGrises + lecturasHorizontalColor;
+        totalEscrituras += escriturasHorizontalGrises + escriturasHorizontalColor;
 
         totalLecturas += lecturasBlur;
         totalEscrituras += escriturasBlur;
 
-        printf("\rProcesando imagenes: %d/%d completadas...", i, 1);
+        printf("\rProcesando imagenes: %d/%d completadas...", i, 100);
         fflush(stdout);
     }
 
