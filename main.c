@@ -29,19 +29,32 @@ int main() {
         char salidaHorizontalColor[256];
         snprintf(salidaHorizontalColor, sizeof(salidaHorizontalColor), "./processed/image%d_horizontal_color.bmp", i);
 
+        char salidaVerticalGrises[256];
+        snprintf(salidaVerticalGrises, sizeof(salidaVerticalGrises), "./processed/image%d_vertical_gris.bmp", i);
+
+        char salidaVerticalColor[256];
+        snprintf(salidaVerticalColor, sizeof(salidaVerticalColor), "./processed/image%d_vertical_color.bmp", i);
+
         char salidaDesenfoque[256];
         snprintf(salidaDesenfoque, sizeof(salidaDesenfoque), "./processed/image%d_blur.bmp", i);
         
         unsigned long lecturasHorizontalGrises = 0, escriturasHorizontalGrises = 0;
         unsigned long lecturasHorizontalColor = 0, escriturasHorizontalColor = 0;
+        unsigned long lecturasVerticalGrises = 0, escriturasVerticalGrises = 0;
+        unsigned long lecturasVerticalColor = 0, escriturasVerticalColor = 0;
         unsigned long lecturasBlur = 0, escriturasBlur = 0;
 
         invertirHorizontalGrises(entrada, salidaHorizontalGrises, log, &lecturasHorizontalGrises, &escriturasHorizontalGrises);
         invertirHorizontalColor(entrada, salidaHorizontalColor, log, &lecturasHorizontalColor, &escriturasHorizontalColor);
+        invertirVerticalGrises(entrada, salidaVerticalGrises, log, &lecturasVerticalGrises, &escriturasVerticalGrises);
+        invertirVerticalColor(entrada, salidaVerticalColor, log, &lecturasVerticalColor, &escriturasVerticalColor);
         aplicarDesenfoqueIntegral(entrada, salidaDesenfoque, 90, log, &lecturasBlur, &escriturasBlur);
 
         totalLecturas += lecturasHorizontalGrises + lecturasHorizontalColor;
         totalEscrituras += escriturasHorizontalGrises + escriturasHorizontalColor;
+
+        totalLecturas += lecturasVerticalGrises + lecturasVerticalColor;
+        totalEscrituras += escriturasVerticalGrises + escriturasVerticalColor;
 
         totalLecturas += lecturasBlur;
         totalEscrituras += escriturasBlur;

@@ -1,6 +1,6 @@
 
 --- Reporte Final ---
-Total de localidades leídas: 3,546,998,676
-Total de localidades escritas: 3,546,998,676
-Tiempo total de ejecución: 1 minutos con 49.19 segundos
-MIPS estimados: 512.71
+Total de localidades leídas: 1,616,697,164
+Total de localidades escritas: 1,616,697,164
+Tiempo total de ejecución: 4 minutos con 27.20 segundos
+MIPS estimados: 242.02
