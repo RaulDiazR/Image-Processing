@@ -5,7 +5,7 @@
 #include <omp.h>
 
 #define NUM_THREADS 18
-#define NUM_IMAGENES 1
+#define NUM_IMAGENES 100
 
 void formatNumberWithCommas(unsigned long num, char *buffer);
 
