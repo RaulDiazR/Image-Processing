@@ -2,12 +2,15 @@
 #include "image_processing.h"
 #include <time.h>
 #include <string.h>
+#include <omp.h>
 
-#define NUM_IMAGENES 1
+#define NUM_THREADS 18
+#define NUM_IMAGENES 100
 
 void formatNumberWithCommas(unsigned long num, char *buffer);
 
 int main() {
+    omp_set_num_threads(NUM_THREADS); // Se definen los threads a utilizar
     FILE *log = fopen("log.txt", "w");
     if (!log) {
         perror("No se pudo abrir el archivo de log");
@@ -74,14 +77,14 @@ int main() {
     double tiempoTotal = (double)(end - start) / CLOCKS_PER_SEC;
 
     // Calcular MIPS
-    double instrucciones = (totalLecturas + totalEscrituras) * 20.0;
+    double instrucciones = (totalLecturas + totalEscrituras) * 20.0 * NUM_THREADS;
     double mips = (instrucciones / 1e6) / tiempoTotal;
 
     // Cambiar formato de resultados
     char bufferLecturas[32];
     char bufferEscrituras[32];
     int minutos = (int)(tiempoTotal / 60);
-    double segundos = tiempoTotal - (minutos * 60);    
+    double segundos = tiempoTotal - (minutos * 60);  
     
     formatNumberWithCommas(totalLecturas, bufferLecturas);
     formatNumberWithCommas(totalEscrituras, bufferEscrituras);
