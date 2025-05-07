@@ -5,7 +5,7 @@
 #include <omp.h>
 
 #define NUM_THREADS 18
-#define NUM_IMAGENES 100
+#define NUM_IMAGENES 1
 
 void formatNumberWithCommas(unsigned long num, char *buffer);
 
@@ -15,6 +15,18 @@ int main() {
     if (!log) {
         perror("No se pudo abrir el archivo de log");
         return 1;
+    }
+
+    int kernelSize;
+    while (1) {
+        printf("Ingrese el tamano del kernel (impar entre 3 y 155): ");
+        scanf("%d", &kernelSize);
+    
+        if (kernelSize >= 3 && kernelSize <= 155 && kernelSize % 2 != 0) {
+            break; // valid input, exit loop
+        }
+    
+        printf("Tamano invalido. Debe ser un numero impar entre 3 y 155.\n\n");
     }
 
     unsigned long totalLecturas = 0;
@@ -39,7 +51,7 @@ int main() {
         snprintf(salidaVerticalColor, sizeof(salidaVerticalColor), "./processed/image%d_vertical_color.bmp", i);
 
         char salidaDesenfoque[256];
-        snprintf(salidaDesenfoque, sizeof(salidaDesenfoque), "./processed/image%d_blur.bmp", i);
+        snprintf(salidaDesenfoque, sizeof(salidaDesenfoque), "./processed/image%d_blur_kernelSize%d.bmp", i, kernelSize);
 
         char salidaGrises[256];
         snprintf(salidaGrises, sizeof(salidaGrises), "./processed/image%d_gris.bmp", i);
@@ -55,7 +67,7 @@ int main() {
         invertirHorizontalColor(entrada, salidaHorizontalColor, log, &lecturasHorizontalColor, &escriturasHorizontalColor);
         invertirVerticalGrises(entrada, salidaVerticalGrises, log, &lecturasVerticalGrises, &escriturasVerticalGrises);
         invertirVerticalColor(entrada, salidaVerticalColor, log, &lecturasVerticalColor, &escriturasVerticalColor);
-        aplicarDesenfoqueIntegral(entrada, salidaDesenfoque, 90, log, &lecturasBlur, &escriturasBlur);
+        aplicarDesenfoqueIntegral(entrada, salidaDesenfoque, kernelSize, log, &lecturasBlur, &escriturasBlur);
         convertirAGrises(entrada, salidaGrises, log, &lecturasGrises, &escriturasGrises);
 
         totalLecturas += lecturasHorizontalGrises + lecturasHorizontalColor;
@@ -69,18 +81,16 @@ int main() {
         totalEscrituras += escriturasBlur;
         totalEscrituras += escriturasGrises;
 
-        printf("\rProcesando imagenes: %d/%d completadas...", i, 100);
+        printf("\rProcesando imagenes: %d/%d completadas...", i, NUM_IMAGENES);
         fflush(stdout);
     }
 
     clock_t end = clock();
     double tiempoTotal = (double)(end - start) / CLOCKS_PER_SEC;
 
-    // Calcular MIPS
     double instrucciones = (totalLecturas + totalEscrituras) * 20.0 * NUM_THREADS;
     double mips = (instrucciones / 1e6) / tiempoTotal;
 
-    // Cambiar formato de resultados
     char bufferLecturas[32];
     char bufferEscrituras[32];
     int minutos = (int)(tiempoTotal / 60);
@@ -89,13 +99,10 @@ int main() {
     formatNumberWithCommas(totalLecturas, bufferLecturas);
     formatNumberWithCommas(totalEscrituras, bufferEscrituras);
     
-
-    // Guardar resultados finales en el log
     fprintf(log, "\n--- Reporte Final ---\n");
-
+    fprintf(log, "Kernel utilizado para desenfoque: %d\n", kernelSize);
     fprintf(log, "Total de localidades leídas: %s\n", bufferLecturas);
     fprintf(log, "Total de localidades escritas: %s\n", bufferEscrituras);
-    
     fprintf(log, "Tiempo total de ejecución: %d minutos con %.2f segundos\n", minutos, segundos);
     fprintf(log, "MIPS estimados: %.2f\n", mips);
 
