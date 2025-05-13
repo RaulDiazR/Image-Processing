@@ -3,7 +3,5 @@
 Kernel utilizado para desenfoque: 155
 Total de localidades leídas: 32,863,801,128
 Total de localidades escritas: 32,863,801,128
-Total de localidades leídas: 32863801128
-Total de localidades escritas: 32863801128
-Tiempo total de ejecución: 5 minutos con 3.39 segundos
-MIPS estimados: 77992.07
+Tiempo total de ejecución: 5 minutos con 7.53 segundos
+MIPS estimados: 76,941.13
