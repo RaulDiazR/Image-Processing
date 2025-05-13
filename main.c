@@ -77,7 +77,7 @@ int main() {
         totalLecturas += lecturasVerticalGrises + lecturasVerticalColor;
         totalEscrituras += escriturasVerticalGrises + escriturasVerticalColor;
 
-        totalLecturas += lecturasBlur;
+        totalLecturas += lecturasBlur * (kernelSize * kernelSize);
         totalEscrituras += escriturasBlur;
         totalEscrituras += escriturasGrises;
 
@@ -91,7 +91,7 @@ int main() {
     unsigned long long totalAccesos = totalLecturas + totalEscrituras;
     /* Se realiza el cálculo de instrucciones, utilizando el total de accesos,
     factor de 20.0 por líneas de código en ensamblador, número de threads y área del kernel */
-    long double instrucciones = (long double)totalAccesos * 20.0 * NUM_THREADS; // * (kernelSize * kernelSize)
+    long double instrucciones = (long double)totalAccesos * 20.0 * NUM_THREADS;
     // Se calcula el millón de instrucciones por segundo
     long double mips = (instrucciones / 1e6) / tiempoTotal;
 
