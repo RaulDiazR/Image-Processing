@@ -1,6 +1,9 @@
 
 --- Reporte Final ---
-Total de localidades leídas: 2,799,030,056
-Total de localidades escritas: 2,799,030,056
-Tiempo total de ejecución: 3 minutos con 25.56 segundos
-MIPS estimados: 2282.15
+Kernel utilizado para desenfoque: 155
+Total de localidades leídas: 32,863,801,128
+Total de localidades escritas: 32,863,801,128
+Total de localidades leídas: 32863801128
+Total de localidades escritas: 32863801128
+Tiempo total de ejecución: 5 minutos con 3.39 segundos
+MIPS estimados: 77992.07

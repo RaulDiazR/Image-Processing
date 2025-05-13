@@ -7,7 +7,7 @@
 #define NUM_THREADS 18
 #define NUM_IMAGENES 100
 
-void formatNumberWithCommas(unsigned long num, char *buffer);
+void formatNumberWithCommas(unsigned long long num, char *buffer);
 
 int main() {
     omp_set_num_threads(NUM_THREADS); // Se definen los threads a utilizar
@@ -29,8 +29,8 @@ int main() {
         printf("Tamano invalido. Debe ser un numero impar entre 3 y 155.\n\n");
     }
 
-    unsigned long totalLecturas = 0;
-    unsigned long totalEscrituras = 0;
+    unsigned long long totalLecturas = 0;
+    unsigned long long totalEscrituras = 0;
 
     clock_t start = clock();
 
@@ -88,8 +88,9 @@ int main() {
     clock_t end = clock();
     double tiempoTotal = (double)(end - start) / CLOCKS_PER_SEC;
 
-    double instrucciones = (totalLecturas + totalEscrituras) * 20.0 * NUM_THREADS;
-    double mips = (instrucciones / 1e6) / tiempoTotal;
+    unsigned long long totalAccesos = totalLecturas + totalEscrituras;
+    long double instrucciones = (long double)totalAccesos * 20.0 * NUM_THREADS;
+    long double mips = (instrucciones / 1e6) / tiempoTotal;
 
     char bufferLecturas[32];
     char bufferEscrituras[32];
@@ -104,20 +105,20 @@ int main() {
     fprintf(log, "Total de localidades leídas: %s\n", bufferLecturas);
     fprintf(log, "Total de localidades escritas: %s\n", bufferEscrituras);
     fprintf(log, "Tiempo total de ejecución: %d minutos con %.2f segundos\n", minutos, segundos);
-    fprintf(log, "MIPS estimados: %.2f\n", mips);
+    fprintf(log, "MIPS estimados: %.2Lf\n", mips);
 
     fclose(log);
 
     printf("\n\nProcesamiento terminado.\n");
     printf("Tiempo total: %d minutos con %.2f segundos\n", minutos, segundos);
-    printf("MIPS estimados: %.2f\n", mips);
+    printf("MIPS estimados: %.2Lf\n", mips);
 
     return 0;
 }
 
-void formatNumberWithCommas(unsigned long num, char *buffer) {
+void formatNumberWithCommas(unsigned long long num, char *buffer) {
     char temp[32];
-    sprintf(temp, "%lu", num);
+    sprintf(temp, "%llu", num);
 
     int len = strlen(temp);
     int commas = (len - 1) / 3;
