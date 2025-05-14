@@ -6,7 +6,7 @@
 #include <locale.h>
 
 #define NUM_THREADS 18
-#define NUM_IMAGENES 5
+#define NUM_IMAGENES 100
 
 void formatNumberWithCommas(const char *numStr, char *buffer);
 
@@ -120,7 +120,6 @@ int main() {
 
     printf("\n\nProcesamiento terminado.\n");
     printf("Tiempo total: %d minutos con %.2f segundos\n", minutos, segundos);
-    printf("Raw MIPS string: %s\n", mipsStr);
     printf("MIPS estimados: %s\n", formattedMips);
 
     return 0;
