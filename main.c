@@ -3,13 +3,15 @@
 #include <time.h>
 #include <string.h>
 #include <omp.h>
+#include <locale.h>
 
 #define NUM_THREADS 18
-#define NUM_IMAGENES 100
+#define NUM_IMAGENES 5
 
 void formatNumberWithCommas(const char *numStr, char *buffer);
 
 int main() {
+    setlocale(LC_NUMERIC, "C");
     omp_set_num_threads(NUM_THREADS); // Se definen los threads a utilizar
     FILE *log = fopen("log.txt", "w");
     if (!log) {
@@ -118,6 +120,7 @@ int main() {
 
     printf("\n\nProcesamiento terminado.\n");
     printf("Tiempo total: %d minutos con %.2f segundos\n", minutos, segundos);
+    printf("Raw MIPS string: %s\n", mipsStr);
     printf("MIPS estimados: %s\n", formattedMips);
 
     return 0;
