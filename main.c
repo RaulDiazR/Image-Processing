@@ -96,7 +96,9 @@ int main() {
     double instrucciones = (long double)totalAccesos * 20.0 * NUM_THREADS;
     // Se calcula el millón de instrucciones por segundo
     double mips = (instrucciones / 1e6) / tiempoTotal;
-
+    // Calculamos MB por segundo
+    double velocidadMBps = 31341.36 / tiempoTotal;
+    
     char lecturasStr[32], escriturasStr[32], bufferLecturas[32], bufferEscrituras[32];
     char mipsStr[64], formattedMips[64];
     int minutos = (int)(tiempoTotal / 60);
@@ -114,6 +116,7 @@ int main() {
     fprintf(log, "Total de localidades leídas: %s\n", bufferLecturas);
     fprintf(log, "Total de localidades escritas: %s\n", bufferEscrituras);
     fprintf(log, "Tiempo total de ejecución: %d minutos con %.2f segundos\n", minutos, segundos);
+    fprintf(log, "Velocidad de procesamiento: %.2f MB/s\n", velocidadMBps);
     fprintf(log, "MIPS estimados: %s\n", formattedMips);
 
     fclose(log);
