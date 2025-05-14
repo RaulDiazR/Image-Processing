@@ -129,13 +129,11 @@ int main() {
     double mips = (instrucciones / 1e6) / tiempoTotal;
     // Calculamos MB por segundo
     unsigned long long totalBytesProcesados = calcularTamanoTotalProcesados("./images");
-    double totalMBProcesados = (double)totalBytesProcesados / (1024.0 * 1024.0);
+    double totalMBProcesados = ((double)totalBytesProcesados * 6) / (1024.0 * 1024.0);
     double velocidadMBps = totalMBProcesados / tiempoTotal;
+    // Calculamos Byes por segundo
+    double velocidadBps = ((double)totalBytesProcesados * 6) / tiempoTotal;
 
-    //printf("Tamaño total de archivos procesados: %llu bytes (%.2f MB)\n", totalBytesProcesados, totalMBProcesados);
-
-
-    
     char lecturasStr[32], escriturasStr[32], bufferLecturas[32], bufferEscrituras[32];
     char mipsStr[64], formattedMips[64];
     int minutos = (int)(tiempoTotal / 60);
