@@ -93,9 +93,9 @@ int main() {
     unsigned long long totalAccesos = totalLecturas + totalEscrituras;
     /* Se realiza el cálculo de instrucciones, utilizando el total de accesos,
     factor de 20.0 por líneas de código en ensamblador, número de threads y área del kernel */
-    long double instrucciones = (long double)totalAccesos * 20.0 * NUM_THREADS;
+    double instrucciones = (long double)totalAccesos * 20.0 * NUM_THREADS;
     // Se calcula el millón de instrucciones por segundo
-    long double mips = (instrucciones / 1e6) / tiempoTotal;
+    double mips = (instrucciones / 1e6) / tiempoTotal;
 
     char lecturasStr[32], escriturasStr[32], bufferLecturas[32], bufferEscrituras[32];
     char mipsStr[64], formattedMips[64];
@@ -104,7 +104,7 @@ int main() {
     
     sprintf(lecturasStr, "%llu", totalLecturas);
     sprintf(escriturasStr, "%llu", totalEscrituras);
-    sprintf(mipsStr, "%.2Lf", mips);
+    sprintf(mipsStr, "%.2f", mips);
     formatNumberWithCommas(lecturasStr, bufferLecturas);
     formatNumberWithCommas(escriturasStr, bufferEscrituras);
     formatNumberWithCommas(mipsStr, formattedMips);
