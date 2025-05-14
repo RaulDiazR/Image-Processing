@@ -4,11 +4,42 @@
 #include <string.h>
 #include <omp.h>
 #include <locale.h>
+#include <dirent.h>
+#include <sys/stat.h>
+
 
 #define NUM_THREADS 18
 #define NUM_IMAGENES 100
 
 void formatNumberWithCommas(const char *numStr, char *buffer);
+
+unsigned long long calcularTamanoTotalProcesados(const char *path) {
+    DIR *dir;
+    struct dirent *entry;
+    struct stat fileStat;
+    char fullPath[512];
+    unsigned long long totalSize = 0;
+
+    dir = opendir(path);
+    if (!dir) {
+        perror("No se pudo abrir el directorio de salida");
+        return 0;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        snprintf(fullPath, sizeof(fullPath), "%s/%s", path, entry->d_name);
+        if (stat(fullPath, &fileStat) == 0) {
+            // Verifica si es un archivo regular
+            if (S_ISREG(fileStat.st_mode)) {
+                totalSize += fileStat.st_size;
+            }
+        }
+    }
+
+    closedir(dir);
+    return totalSize;
+}
+
 
 int main() {
     setlocale(LC_NUMERIC, "C");
@@ -97,7 +128,13 @@ int main() {
     // Se calcula el millón de instrucciones por segundo
     double mips = (instrucciones / 1e6) / tiempoTotal;
     // Calculamos MB por segundo
-    double velocidadMBps = 31341.36 / tiempoTotal;
+    unsigned long long totalBytesProcesados = calcularTamanoTotalProcesados("./images");
+    double totalMBProcesados = (double)totalBytesProcesados / (1024.0 * 1024.0);
+    double velocidadMBps = totalMBProcesados / tiempoTotal;
+
+    //printf("Tamaño total de archivos procesados: %llu bytes (%.2f MB)\n", totalBytesProcesados, totalMBProcesados);
+
+
     
     char lecturasStr[32], escriturasStr[32], bufferLecturas[32], bufferEscrituras[32];
     char mipsStr[64], formattedMips[64];
