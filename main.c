@@ -10,7 +10,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
-#define NUM_IMAGENES 10
+#define NUM_IMAGENES 100
 #define NUM_THREADS 5 // Per process/thread
 
 void formatNumberWithCommas(const char *numStr, char *buffer);
@@ -59,6 +59,7 @@ int main(int argc, char *argv[]) {
     int end = (rank == size - 1) ? NUM_IMAGENES : start + imagesPerProc - 1;
 
     unsigned long long totalLecturas = 0;
+    unsigned long long totalLecturasBlur = 0;
     unsigned long long totalEscrituras = 0;
     int processedImgs = 0;
     clock_t startTime = clock();
@@ -84,7 +85,8 @@ int main(int argc, char *argv[]) {
         aplicarDesenfoqueIntegral(entrada, salidaDesenfoque, kernelSize, log, &lecturasBlur, &escrituras);
         convertirAGrises(entrada, salidaGrises, log, &lecturas, &escrituras);
 
-        totalLecturas += lecturas + (lecturasBlur * kernelSize * kernelSize);
+        totalLecturasBlur += lecturasBlur * kernelSize *kernelSize;
+        totalLecturas += lecturas;
         totalEscrituras += escrituras;
 
         processedImgs += 1;
@@ -97,7 +99,7 @@ int main(int argc, char *argv[]) {
     clock_t endTime = clock();
     double localTime = (double)(endTime - startTime) / CLOCKS_PER_SEC;
 
-    unsigned long long totalAccesos = totalLecturas + totalEscrituras;
+    unsigned long long totalAccesos = totalLecturas + totalEscrituras + totalLecturasBlur;
     double instrucciones = (long double)totalAccesos * 20.0 * NUM_THREADS;
     double mips = (instrucciones / 1e6) / localTime;
 
@@ -108,7 +110,7 @@ int main(int argc, char *argv[]) {
     fprintf(log, "\n--- Rango %d Finalizado ---\n", rank);
     fprintf(log, "Kernel: %d\n", kernelSize);
     fprintf(log, "Tiempo: %.2f segundos\n", localTime);
-    fprintf(log, "Lecturas: %llu\n", totalLecturas);
+    fprintf(log, "Lecturas: %llu\n", totalLecturas + totalLecturasBlur);
     fprintf(log, "Escrituras: %llu\n", totalEscrituras);
     fprintf(log, "MIPS: %s\n", formattedMips);
 
@@ -116,7 +118,8 @@ int main(int argc, char *argv[]) {
 
     // Gather global totals on rank 0
     double maxTime;
-    unsigned long long globalLecturas = 0, globalEscrituras = 0;
+    unsigned long long globalLecturas = 0, globalLecturasBlur = 0, globalEscrituras = 0;
+    MPI_Reduce(&totalLecturasBlur, &globalLecturasBlur, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
     MPI_Reduce(&totalLecturas, &globalLecturas, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
     MPI_Reduce(&totalEscrituras, &globalEscrituras, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
 
@@ -125,7 +128,7 @@ int main(int argc, char *argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
     if (rank == 0) {
         double tiempoTotal = maxTime;
-        unsigned long long totalAccesos = globalLecturas + globalEscrituras;
+        unsigned long long totalAccesos = globalLecturas + globalEscrituras + globalLecturasBlur;
         double instrucciones = (double)totalAccesos * 20.0 * NUM_THREADS;
         double mips = (instrucciones / 1e6) / tiempoTotal;
         double mbps = (double)totalAccesos / (1024.0 * 1024.0) / tiempoTotal;
@@ -135,7 +138,7 @@ int main(int argc, char *argv[]) {
         formatNumberWithCommas(mipsStr, formattedMips);
 
         char lecStr[64], escStr[64];
-        sprintf(lecStr, "%llu", globalLecturas);
+        sprintf(lecStr, "%llu", globalLecturas + globalLecturasBlur);
         sprintf(escStr, "%llu", globalEscrituras);
 
         char formattedLecturas[64], formattedEscrituras[64];
@@ -152,7 +155,7 @@ int main(int argc, char *argv[]) {
             fprintf(finalLog, "Total de localidades leídas: %s\n", formattedLecturas);
             fprintf(finalLog, "Total de localidades escritas: %s\n", formattedEscrituras);
             fprintf(finalLog, "Tiempo total de ejecución: %d minutos con %.2f segundos\n", minutes, seconds);
-            fprintf(finalLog, "Velocidad de procesamiento: %.2f MB/s\n", mbps);
+            fprintf(finalLog, "Velocidad de procesamiento: %.2f MB/s\n", formattedMips);
             fprintf(finalLog, "MIPS estimados: %s\n", formattedMips);
             fclose(finalLog);
             printf("\nResumen escrito en final_log.txt\n");
