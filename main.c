@@ -1,165 +1,121 @@
-// main.c
+// main.c (MPI version)
 #include "image_processing.h"
-#include <time.h>
-#include <string.h>
+#include <mpi.h>
 #include <omp.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 #include <locale.h>
 #include <dirent.h>
 #include <sys/stat.h>
 
-
-#define NUM_THREADS 18
 #define NUM_IMAGENES 100
+#define NUM_THREADS 6 // Per process/thread
 
 void formatNumberWithCommas(const char *numStr, char *buffer);
 
-unsigned long long calcularTamanoTotalProcesados(const char *path) {
-    DIR *dir;
-    struct dirent *entry;
-    struct stat fileStat;
-    char fullPath[512];
-    unsigned long long totalSize = 0;
+int main(int argc, char *argv[]) {
+    MPI_Init(&argc, &argv);
 
-    dir = opendir(path);
-    if (!dir) {
-        perror("No se pudo abrir el directorio de salida");
-        return 0;
-    }
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank); // This process's ID
+    MPI_Comm_size(MPI_COMM_WORLD, &size); // Total processes
 
-    while ((entry = readdir(dir)) != NULL) {
-        snprintf(fullPath, sizeof(fullPath), "%s/%s", path, entry->d_name);
-        if (stat(fullPath, &fileStat) == 0) {
-            // Verifica si es un archivo regular
-            if (S_ISREG(fileStat.st_mode)) {
-                totalSize += fileStat.st_size;
-            }
-        }
-    }
-
-    closedir(dir);
-    return totalSize;
-}
-
-
-int main() {
     setlocale(LC_NUMERIC, "C");
-    omp_set_num_threads(NUM_THREADS); // Se definen los threads a utilizar
-    FILE *log = fopen("log.txt", "w");
+    omp_set_num_threads(NUM_THREADS);
+
+    int kernelSize;
+
+    if (rank == 0) {
+        // Only master reads kernel size
+        do {
+            printf("Ingrese el tamaño del kernel (impar entre 3 y 155): ");
+            scanf("%d", &kernelSize);
+        } while (kernelSize < 3 || kernelSize > 155 || kernelSize % 2 == 0);
+    }
+
+    // Broadcast kernel size to all processes
+    MPI_Bcast(&kernelSize, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    // Open individual log file per rank
+    char logFilename[64];
+    snprintf(logFilename, sizeof(logFilename), "log_rank%d.txt", rank);
+    FILE *log = fopen(logFilename, "w");
     if (!log) {
         perror("No se pudo abrir el archivo de log");
+        MPI_Finalize();
         return 1;
     }
 
-    int kernelSize;
-    while (1) {
-        printf("Ingrese el tamano del kernel (impar entre 3 y 155): ");
-        scanf("%d", &kernelSize);
-    
-        if (kernelSize >= 3 && kernelSize <= 155 && kernelSize % 2 != 0) {
-            break; // valid input, exit loop
-        }
-    
-        printf("Tamano invalido. Debe ser un numero impar entre 3 y 155.\n\n");
-    }
+    // Calculate image range for each process
+    int imagesPerProc = NUM_IMAGENES / size;
+    int start = rank * imagesPerProc + 1;
+    int end = (rank == size - 1) ? NUM_IMAGENES : start + imagesPerProc - 1;
 
     unsigned long long totalLecturas = 0;
     unsigned long long totalEscrituras = 0;
 
-    clock_t start = clock();
+    clock_t startTime = clock();
 
-    for (int i = 1; i <= NUM_IMAGENES; i++) {
-        char entrada[256];
+    for (int i = start; i <= end; i++) {
+        char entrada[128], salidaHorizontalGrises[128], salidaHorizontalColor[128];
+        char salidaVerticalGrises[128], salidaVerticalColor[128], salidaDesenfoque[128], salidaGrises[128];
+
         snprintf(entrada, sizeof(entrada), "./images/image%d.bmp", i);
-
-        char salidaHorizontalGrises[256];
         snprintf(salidaHorizontalGrises, sizeof(salidaHorizontalGrises), "./processed/image%d_horizontal_gris.bmp", i);
-
-        char salidaHorizontalColor[256];
         snprintf(salidaHorizontalColor, sizeof(salidaHorizontalColor), "./processed/image%d_horizontal_color.bmp", i);
-
-        char salidaVerticalGrises[256];
         snprintf(salidaVerticalGrises, sizeof(salidaVerticalGrises), "./processed/image%d_vertical_gris.bmp", i);
-
-        char salidaVerticalColor[256];
         snprintf(salidaVerticalColor, sizeof(salidaVerticalColor), "./processed/image%d_vertical_color.bmp", i);
-
-        char salidaDesenfoque[256];
         snprintf(salidaDesenfoque, sizeof(salidaDesenfoque), "./processed/image%d_blur_kernelSize%d.bmp", i, kernelSize);
-
-        char salidaGrises[256];
         snprintf(salidaGrises, sizeof(salidaGrises), "./processed/image%d_gris.bmp", i);
-        
-        unsigned long lecturasHorizontalGrises = 0, escriturasHorizontalGrises = 0;
-        unsigned long lecturasHorizontalColor = 0, escriturasHorizontalColor = 0;
-        unsigned long lecturasVerticalGrises = 0, escriturasVerticalGrises = 0;
-        unsigned long lecturasVerticalColor = 0, escriturasVerticalColor = 0;
-        unsigned long lecturasBlur = 0, escriturasBlur = 0;
-        unsigned long lecturasGrises = 0, escriturasGrises = 0;
 
-        invertirHorizontalGrises(entrada, salidaHorizontalGrises, log, &lecturasHorizontalGrises, &escriturasHorizontalGrises);
-        invertirHorizontalColor(entrada, salidaHorizontalColor, log, &lecturasHorizontalColor, &escriturasHorizontalColor);
-        invertirVerticalGrises(entrada, salidaVerticalGrises, log, &lecturasVerticalGrises, &escriturasVerticalGrises);
-        invertirVerticalColor(entrada, salidaVerticalColor, log, &lecturasVerticalColor, &escriturasVerticalColor);
-        aplicarDesenfoqueIntegral(entrada, salidaDesenfoque, kernelSize, log, &lecturasBlur, &escriturasBlur);
-        convertirAGrises(entrada, salidaGrises, log, &lecturasGrises, &escriturasGrises);
+        unsigned long lecturas = 0, escrituras = 0;
 
-        totalLecturas += lecturasHorizontalGrises + lecturasHorizontalColor;
-        totalEscrituras += escriturasHorizontalGrises + escriturasHorizontalColor;
-        totalLecturas += lecturasGrises;
+        invertirHorizontalGrises(entrada, salidaHorizontalGrises, log, &lecturas, &escrituras);
+        invertirHorizontalColor(entrada, salidaHorizontalColor, log, &lecturas, &escrituras);
+        invertirVerticalGrises(entrada, salidaVerticalGrises, log, &lecturas, &escrituras);
+        invertirVerticalColor(entrada, salidaVerticalColor, log, &lecturas, &escrituras);
+        aplicarDesenfoqueIntegral(entrada, salidaDesenfoque, kernelSize, log, &lecturas, &escrituras);
+        convertirAGrises(entrada, salidaGrises, log, &lecturas, &escrituras);
 
-        totalLecturas += lecturasVerticalGrises + lecturasVerticalColor;
-        totalEscrituras += escriturasVerticalGrises + escriturasVerticalColor;
+        totalLecturas += lecturas;
+        totalEscrituras += escrituras;
 
-        totalLecturas += lecturasBlur * (kernelSize * kernelSize);
-        totalEscrituras += escriturasBlur;
-        totalEscrituras += escriturasGrises;
-
-        printf("\rProcesando imagenes: %d/%d completadas...", i, NUM_IMAGENES);
+        printf("Rango %d: Procesado imagen %d/%d\n", rank, i, end);
         fflush(stdout);
     }
 
-    clock_t end = clock();
-    double tiempoTotal = (double)(end - start) / CLOCKS_PER_SEC;
+    clock_t endTime = clock();
+    double localTime = (double)(endTime - startTime) / CLOCKS_PER_SEC;
 
     unsigned long long totalAccesos = totalLecturas + totalEscrituras;
-    /* Se realiza el cálculo de instrucciones, utilizando el total de accesos,
-    factor de 20.0 por líneas de código en ensamblador, número de threads y área del kernel */
     double instrucciones = (long double)totalAccesos * 20.0 * NUM_THREADS;
-    // Se calcula el millón de instrucciones por segundo
-    double mips = (instrucciones / 1e6) / tiempoTotal;
-    // Calculamos MB por segundo
-    unsigned long long totalBytesProcesados = calcularTamanoTotalProcesados("./images");
-    double totalMBProcesados = ((double)totalBytesProcesados * 6) / (1024.0 * 1024.0);
-    double velocidadMBps = totalMBProcesados / tiempoTotal;
-    // Calculamos Byes por segundo
-    double velocidadBps = ((double)totalBytesProcesados * 6) / tiempoTotal;
+    double mips = (instrucciones / 1e6) / localTime;
 
-    char lecturasStr[32], escriturasStr[32], bufferLecturas[32], bufferEscrituras[32];
     char mipsStr[64], formattedMips[64];
-    int minutos = (int)(tiempoTotal / 60);
-    double segundos = tiempoTotal - (minutos * 60);  
-    
-    sprintf(lecturasStr, "%llu", totalLecturas);
-    sprintf(escriturasStr, "%llu", totalEscrituras);
     sprintf(mipsStr, "%.2f", mips);
-    formatNumberWithCommas(lecturasStr, bufferLecturas);
-    formatNumberWithCommas(escriturasStr, bufferEscrituras);
     formatNumberWithCommas(mipsStr, formattedMips);
-    
-    fprintf(log, "\n--- Reporte Final ---\n");
-    fprintf(log, "Kernel utilizado para desenfoque: %d\n", kernelSize);
-    fprintf(log, "Total de localidades leídas: %s\n", bufferLecturas);
-    fprintf(log, "Total de localidades escritas: %s\n", bufferEscrituras);
-    fprintf(log, "Tiempo total de ejecución: %d minutos con %.2f segundos\n", minutos, segundos);
-    fprintf(log, "Velocidad de procesamiento: %.2f MB/s\n", velocidadMBps);
-    fprintf(log, "MIPS estimados: %s\n", formattedMips);
+
+    fprintf(log, "\n--- Rango %d Finalizado ---\n", rank);
+    fprintf(log, "Kernel: %d\n", kernelSize);
+    fprintf(log, "Tiempo: %.2f segundos\n", localTime);
+    fprintf(log, "Lecturas: %llu\n", totalLecturas);
+    fprintf(log, "Escrituras: %llu\n", totalEscrituras);
+    fprintf(log, "MIPS: %s\n", formattedMips);
 
     fclose(log);
 
-    printf("\n\nProcesamiento terminado.\n");
-    printf("Tiempo total: %d minutos con %.2f segundos\n", minutos, segundos);
-    printf("MIPS estimados: %s\n", formattedMips);
+    // Optional: Gather and print summary from all processes
+    double maxTime;
+    MPI_Reduce(&localTime, &maxTime, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
+    if (rank == 0) {
+        printf("\nProcesamiento MPI completado.\n");
+        printf("Tiempo máximo entre todos los procesos: %.2f segundos\n", maxTime);
+    }
+
+    MPI_Finalize();
     return 0;
 }
 
