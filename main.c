@@ -1,4 +1,4 @@
-// main.c (MPI version con almacenamiento distribuido local y chequeo de espacio)
+// main.c (MPI version)
 #include "image_processing.h"
 #include <mpi.h>
 #include <omp.h>
@@ -10,9 +10,11 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <unistd.h>
 
-#define NUM_IMAGENES 100
-#define NUM_THREADS 5 // Per process/thread
+#define NUM_IMAGENES 600
+#define NUM_THREADS 6 // Per process/thread
+#define MAX_HOSTNAME 256
 
 void formatNumberWithCommas(const char *numStr, char *buffer);
 
@@ -20,6 +22,30 @@ long long get_free_space_bytes(const char *path) {
     struct statvfs stat;
     if (statvfs(path, &stat) != 0) return -1;
     return (long long)stat.f_bsize * (long long)stat.f_bavail;
+}
+
+long long calcular_promedio_tamano_imagenes(const char *directorio, int *num_imagenes) {
+    DIR *dir = opendir(directorio);
+    if (!dir) return -1;
+
+    struct dirent *entry;
+    long long total_size = 0;
+    int count = 0;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strstr(entry->d_name, ".bmp")) {
+            char path[512];
+            snprintf(path, sizeof(path), "%s/%s", directorio, entry->d_name);
+            struct stat st;
+            if (stat(path, &st) == 0) {
+                total_size += st.st_size;
+                count++;
+            }
+        }
+    }
+    closedir(dir);
+    if (num_imagenes) *num_imagenes = count;
+    return (count > 0) ? total_size / count : -1;
 }
 
 int main(int argc, char *argv[]) {
@@ -32,14 +58,40 @@ int main(int argc, char *argv[]) {
     setlocale(LC_NUMERIC, "C");
     omp_set_num_threads(NUM_THREADS);
 
+    char hostname[MAX_HOSTNAME];
+    gethostname(hostname, MAX_HOSTNAME);
+
+    unsigned long host_hash = 5381;
+    for (int c = 0; hostname[c] != '\0'; c++)
+        host_hash = ((host_hash << 5) + host_hash) + hostname[c]; // djb2
+
+    MPI_Comm node_comm;
+    MPI_Comm_split(MPI_COMM_WORLD, host_hash, rank, &node_comm);
+
+    int node_rank;
+    MPI_Comm_rank(node_comm, &node_rank);
+
+    long long promedioTamano = 0;
+    int numImagenesReal = 0;
+
+    if (rank == 0) {
+        promedioTamano = calcular_promedio_tamano_imagenes("./images", &numImagenesReal);
+        if (promedioTamano <= 0 || numImagenesReal == 0) {
+            fprintf(stderr, "No se pudo calcular el tamaño promedio de las imágenes.\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+    }
+    MPI_Bcast(&promedioTamano, 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD);
+
     int kernelSize;
     if (rank == 0) {
         char input[16];
         do {
-            printf("Ingrese el tamaño del kernel (impar entre 3 y 155): ");
+            printf("Ingrese el tamaño del kernel (impar entre 3 y 155) [155 por defecto]: ");
             fflush(stdout);
             if (!fgets(input, sizeof(input), stdin)) MPI_Abort(MPI_COMM_WORLD, 1);
-            kernelSize = atoi(input);
+            if (input[0] == '\n') kernelSize = 155;
+            else kernelSize = atoi(input);
         } while (kernelSize < 3 || kernelSize > 155 || kernelSize % 2 == 0);
     }
     MPI_Bcast(&kernelSize, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -60,15 +112,40 @@ int main(int argc, char *argv[]) {
     const char *outputDir = "./processed_local/";
     mkdir(outputDir, 0777);
 
-    long long espacioDisponible = get_free_space_bytes(outputDir);
-    long long espacioEstimadoPorImagen = 2.5 * 1024 * 1024;
-    int maxImagenesPosibles = espacioDisponible > 0 ? espacioDisponible / espacioEstimadoPorImagen : 0;
+    long long estimacionPorImagenProcesada = promedioTamano * 6;
+    long long espacioDisponibleLocal = 0;
+    if (node_rank == 0) {
+        espacioDisponibleLocal = get_free_space_bytes(outputDir);
+    }
+
+    long long espacioNodo = espacioDisponibleLocal;
+    long long *espaciosPorNodo = NULL;
+    if (rank == 0) {
+        espaciosPorNodo = calloc(size, sizeof(long long));
+    }
+    MPI_Gather(&espacioNodo, 1, MPI_LONG_LONG, espaciosPorNodo, 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD);
+
+    if (rank == 0) {
+        long long espacioTotal = 0;
+        for (int i = 0; i < size; i++) {
+            espacioTotal += espaciosPorNodo[i];
+        }
+        long long espacioNecesario = estimacionPorImagenProcesada * NUM_IMAGENES * 1.08;
+        if (espacioTotal < espacioNecesario) {
+            fprintf(stderr, "ERROR: Espacio insuficiente en el clúster. Requiere %.2f GB, disponible %.2f GB\n",
+                    (double)espacioNecesario / (1024 * 1024 * 1024),
+                    (double)espacioTotal / (1024 * 1024 * 1024));
+            free(espaciosPorNodo);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        free(espaciosPorNodo);
+    }
 
     unsigned long long totalLecturas = 0, totalLecturasBlur = 0, totalEscrituras = 0;
     int processedImgs = 0;
     clock_t startTime = clock();
 
-    for (int i = start; i <= end && processedImgs < maxImagenesPosibles; i++) {
+    for (int i = start; i <= end; i++) {
         char entrada[128], salida1[128], salida2[128], salida3[128], salida4[128], salida5[128], salida6[128];
         snprintf(entrada, sizeof(entrada), "./images/image%d.bmp", i);
         snprintf(salida1, sizeof(salida1), "%s/image%d_horizontal_gris.bmp", outputDir, i);
@@ -99,10 +176,6 @@ int main(int argc, char *argv[]) {
     clock_t endTime = clock();
     double localTime = (double)(endTime - startTime) / CLOCKS_PER_SEC;
 
-    long long espacioUtilizado = processedImgs * espacioEstimadoPorImagen;
-    long long totalEspacioUtilizado;
-    MPI_Reduce(&espacioUtilizado, &totalEspacioUtilizado, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
-
     unsigned long long globalLecturas = 0, globalLecturasBlur = 0, globalEscrituras = 0;
     MPI_Reduce(&totalLecturasBlur, &globalLecturasBlur, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
     MPI_Reduce(&totalLecturas, &globalLecturas, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -111,13 +184,7 @@ int main(int argc, char *argv[]) {
     double maxTime;
     MPI_Reduce(&localTime, &maxTime, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
-
     if (rank == 0) {
-        long long espacioTotalEstimado = NUM_IMAGENES * espacioEstimadoPorImagen;
-        long long espacioDisponibleMaster = get_free_space_bytes("./processed_local/");
-        if (totalEspacioUtilizado > espacioTotalEstimado || espacioDisponibleMaster < espacioEstimadoPorImagen) {
-            fprintf(stderr, "\nADVERTENCIA: Podría no haber suficiente espacio entre todos los nodos para guardar las imagenes procesadas.\n");
-        }
         double tiempoTotal = maxTime;
         unsigned long long totalAccesos = globalLecturas + globalEscrituras + globalLecturasBlur;
         double instrucciones = (double)totalAccesos * 20.0 * NUM_THREADS;
@@ -146,7 +213,7 @@ int main(int argc, char *argv[]) {
             fprintf(finalLog, "Total de localidades leídas: %s\n", formattedLecturas);
             fprintf(finalLog, "Total de localidades escritas: %s\n", formattedEscrituras);
             fprintf(finalLog, "Tiempo total de ejecución: %d minutos con %.2f segundos\n", minutes, seconds);
-            fprintf(finalLog, "Velocidad de procesamiento: %.2f MB/s\n", formattedMips);
+            fprintf(finalLog, "Velocidad de procesamiento: %s MB/s\n", formattedMips);
             fprintf(finalLog, "MIPS estimados: %s\n", formattedMips);
             fclose(finalLog);
             printf("\nResumen escrito en final_log.txt\n");
