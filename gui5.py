@@ -117,6 +117,7 @@ class Ui_MainWindow(object):
         self.actionMostrarIntegrantes = QtWidgets.QAction(MainWindow)
         self.actionMostrarIntegrantes.setObjectName("actionMostrarIntegrantes")
         self.Acercade.addAction(self.menuAcerca_de.menuAction())
+        self.menuAcerca_de.addAction(self.actionMostrarIntegrantes)
 
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)

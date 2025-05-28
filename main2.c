@@ -4,159 +4,180 @@
 #include <string.h>
 #include <omp.h>
 #include <locale.h>
-#include <dirent.h>
 #include <sys/stat.h>
 #include <time.h>
 
 #define NUM_THREADS 18
-#define NUM_IMAGENES 5  // Cambia este número si deseas procesar más o menos imágenes
 
 void formatNumberWithCommas(const char *numStr, char *buffer);
 
-unsigned long long calcularTamanoTotalProcesados(const char *path) {
-    DIR *dir;
-    struct dirent *entry;
-    struct stat fileStat;
-    char fullPath[512];
-    unsigned long long totalSize = 0;
-
-    dir = opendir(path);
-    if (!dir) {
-        perror("No se pudo abrir el directorio de salida");
-        return 0;
-    }
-
-    while ((entry = readdir(dir)) != NULL) {
-        snprintf(fullPath, sizeof(fullPath), "%s/%s", path, entry->d_name);
-        if (stat(fullPath, &fileStat) == 0 && S_ISREG(fileStat.st_mode)) {
-            totalSize += fileStat.st_size;
-        }
-    }
-
-    closedir(dir);
-    return totalSize;
-}
+void guardar_acumulados(unsigned long long lecturas, unsigned long long escrituras, double instrucciones);
+void leer_acumulados(unsigned long long *lecturas, unsigned long long *escrituras, double *instrucciones);
+void guardar_tiempo(double segundos);
+double leer_tiempo();
 
 int main(int argc, char *argv[]) {
     setlocale(LC_NUMERIC, "C");
     omp_set_num_threads(NUM_THREADS);
 
-    FILE *log = fopen("log.txt", "w");
-    if (!log) {
-        perror("No se pudo abrir el archivo de log");
+    if (argc == 2 && strcmp(argv[1], "--start") == 0) {
+        FILE *f = fopen("acumulador.txt", "w");
+        if (f) {
+            fprintf(f, "0 0 0.0\n");
+            fclose(f);
+        }
+        FILE *t = fopen("tiempo.txt", "w");
+        if (t) {
+            fprintf(t, "0.0\n");
+            fclose(t);
+        }
+        return 0;
+    }
+
+    if (argc == 2 && strcmp(argv[1], "--end") == 0) {
+        FILE *log = fopen("log-temp.txt", "w");
+        if (!log) return 1;
+
+        unsigned long long lecturas = 0, escrituras = 0;
+        double instrucciones = 0;
+        leer_acumulados(&lecturas, &escrituras, &instrucciones);
+        double tiempoTotal = leer_tiempo();
+        double mips = (instrucciones / 1e6) / tiempoTotal;
+
+        char bufLect[64], bufEscr[64], bufMips[64];
+        sprintf(bufLect, "%llu", lecturas);
+        sprintf(bufEscr, "%llu", escrituras);
+        sprintf(bufMips, "%.2f", mips);
+
+        char outLect[64], outEscr[64], outMips[64];
+        formatNumberWithCommas(bufLect, outLect);
+        formatNumberWithCommas(bufEscr, outEscr);
+        formatNumberWithCommas(bufMips, outMips);
+
+        fprintf(log,
+            "--- Reporte Final ---\n"
+            "Kernel utilizado para desenfoque: 55\n"
+            "Total de localidades leídas: %s\n"
+            "Total de localidades escritas: %s\n"
+            "Tiempo de ejecución: %.2f segundos\n"
+            "MIPS estimados: %s\n",
+            outLect, outEscr, tiempoTotal, outMips
+        );
+
+        fclose(log);
+        return 0;
+    }
+
+    if (argc < 5) {
+        fprintf(stderr, "Uso: %s <kernel> <inputDir> <outputDir> <imageFile>\n", argv[0]);
         return 1;
     }
 
-    int kernelSize = 55;
-    if (argc > 1) {
-        kernelSize = atoi(argv[1]);
-        if (kernelSize < 3 || kernelSize > 155 || kernelSize % 2 == 0) {
-            fprintf(stderr, "Kernel inválido. Usando 55 por defecto.\n");
-            kernelSize = 55;
-        }
-    }
+    int kernelSize = atoi(argv[1]);
+    const char *inputDir = argv[2];
+    const char *outputDir = argv[3];
+    const char *imageFile = argv[4];
 
-    unsigned long long totalLecturas = 0, totalEscrituras = 0;
+    char entrada[512];
+    snprintf(entrada, sizeof(entrada), "%s/%s", inputDir, imageFile);
+
+    char nombreBase[128];
+    strncpy(nombreBase, imageFile, sizeof(nombreBase));
+    char *ext = strrchr(nombreBase, '.');
+    if (ext) *ext = '\0';
+
+    char salidaHorizontalGrises[512], salidaHorizontalColor[512];
+    char salidaVerticalGrises[512], salidaVerticalColor[512];
+    char salidaDesenfoque[512], salidaGrises[512];
+
+    snprintf(salidaHorizontalGrises, sizeof(salidaHorizontalGrises), "%s/%s_hg.bmp", outputDir, nombreBase);
+    snprintf(salidaHorizontalColor, sizeof(salidaHorizontalColor), "%s/%s_hc.bmp", outputDir, nombreBase);
+    snprintf(salidaVerticalGrises, sizeof(salidaVerticalGrises), "%s/%s_vg.bmp", outputDir, nombreBase);
+    snprintf(salidaVerticalColor, sizeof(salidaVerticalColor), "%s/%s_vc.bmp", outputDir, nombreBase);
+    snprintf(salidaDesenfoque, sizeof(salidaDesenfoque), "%s/%s_blur_k%d.bmp", outputDir, nombreBase, kernelSize);
+    snprintf(salidaGrises, sizeof(salidaGrises), "%s/%s_gris.bmp", outputDir, nombreBase);
+
     clock_t start = clock();
 
-    for (int i = 1; i <= NUM_IMAGENES; i++) {
-        char entrada[256], salidaHorizontalGrises[256], salidaHorizontalColor[256];
-        char salidaVerticalGrises[256], salidaVerticalColor[256], salidaDesenfoque[256], salidaGrises[256];
+    unsigned long l1 = 0, e1 = 0, l2 = 0, e2 = 0, l3 = 0, e3 = 0;
+    unsigned long l4 = 0, e4 = 0, l5 = 0, e5 = 0, l6 = 0, e6 = 0;
 
-        snprintf(entrada, sizeof(entrada), "./images/image%d.bmp", i);
-        snprintf(salidaHorizontalGrises, sizeof(salidaHorizontalGrises), "./processed/image%d_horizontal_gris.bmp", i);
-        snprintf(salidaHorizontalColor, sizeof(salidaHorizontalColor), "./processed/image%d_horizontal_color.bmp", i);
-        snprintf(salidaVerticalGrises, sizeof(salidaVerticalGrises), "./processed/image%d_vertical_gris.bmp", i);
-        snprintf(salidaVerticalColor, sizeof(salidaVerticalColor), "./processed/image%d_vertical_color.bmp", i);
-        snprintf(salidaDesenfoque, sizeof(salidaDesenfoque), "./processed/image%d_blur_kernelSize%d.bmp", i, kernelSize);
-        snprintf(salidaGrises, sizeof(salidaGrises), "./processed/image%d_gris.bmp", i);
-
-        unsigned long l1 = 0, e1 = 0, l2 = 0, e2 = 0, l3 = 0, e3 = 0;
-        unsigned long l4 = 0, e4 = 0, l5 = 0, e5 = 0, l6 = 0, e6 = 0;
-
-        invertirHorizontalGrises(entrada, salidaHorizontalGrises, log, &l1, &e1);
-        invertirHorizontalColor(entrada, salidaHorizontalColor, log, &l2, &e2);
-        invertirVerticalGrises(entrada, salidaVerticalGrises, log, &l3, &e3);
-        invertirVerticalColor(entrada, salidaVerticalColor, log, &l4, &e4);
-        aplicarDesenfoqueIntegral(entrada, salidaDesenfoque, kernelSize, log, &l5, &e5);
-        convertirAGrises(entrada, salidaGrises, log, &l6, &e6);
-
-        totalLecturas += l1 + l2 + l3 + l4 + (l5 * kernelSize * kernelSize) + l6;
-        totalEscrituras += e1 + e2 + e3 + e4 + e5 + e6;
-
-        printf("\rProcesando imagenes: %d/%d completadas...", i, NUM_IMAGENES);
-        fflush(stdout);
-    }
+    invertirHorizontalGrises(entrada, salidaHorizontalGrises, NULL, &l1, &e1);
+    invertirHorizontalColor(entrada, salidaHorizontalColor, NULL, &l2, &e2);
+    invertirVerticalGrises(entrada, salidaVerticalGrises, NULL, &l3, &e3);
+    invertirVerticalColor(entrada, salidaVerticalColor, NULL, &l4, &e4);
+    aplicarDesenfoqueIntegral(entrada, salidaDesenfoque, kernelSize, NULL, &l5, &e5);
+    convertirAGrises(entrada, salidaGrises, NULL, &l6, &e6);
 
     clock_t end = clock();
-    double tiempoTotal = (double)(end - start) / CLOCKS_PER_SEC;
+    double tiempo = (double)(end - start) / CLOCKS_PER_SEC;
 
-    double instrucciones = (double)(totalLecturas + totalEscrituras) * 20.0 * NUM_THREADS;
-    double mips = (instrucciones / 1e6) / tiempoTotal;
+    unsigned long long lecturas = l1 + l2 + l3 + l4 + (l5 * kernelSize * kernelSize) + l6;
+    unsigned long long escrituras = e1 + e2 + e3 + e4 + e5 + e6;
+    double instrucciones = (double)(lecturas + escrituras) * 20.0 * NUM_THREADS;
 
-    unsigned long long bytes = calcularTamanoTotalProcesados("./images");
-    double MBs = ((double)bytes * 6) / (1024.0 * 1024.0);
-    double velocidadMBps = MBs / tiempoTotal;
-
-    char lecturasStr[32], escriturasStr[32], bufferLecturas[32], bufferEscrituras[32];
-    char mipsStr[64], formattedMips[64];
-    int minutos = (int)(tiempoTotal / 60);
-    double segundos = tiempoTotal - minutos * 60;
-
-    sprintf(lecturasStr, "%llu", totalLecturas);
-    sprintf(escriturasStr, "%llu", totalEscrituras);
-    sprintf(mipsStr, "%.2f", mips);
-    formatNumberWithCommas(lecturasStr, bufferLecturas);
-    formatNumberWithCommas(escriturasStr, bufferEscrituras);
-    formatNumberWithCommas(mipsStr, formattedMips);
-
-    fprintf(log, "\n--- Reporte Final ---\n");
-    fprintf(log, "Kernel utilizado para desenfoque: %d\n", kernelSize);
-    fprintf(log, "Total de localidades leídas: %s\n", bufferLecturas);
-    fprintf(log, "Total de localidades escritas: %s\n", bufferEscrituras);
-    fprintf(log, "Tiempo total de ejecución: %d minutos con %.2f segundos\n", minutos, segundos);
-    fprintf(log, "Velocidad de procesamiento: %.2f MB/s\n", velocidadMBps);
-    fprintf(log, "MIPS estimados: %s\n", formattedMips);
-
-    fclose(log);
-
-    printf("\n\nProcesamiento terminado.\n");
-    printf("Tiempo total: %d minutos con %.2f segundos\n", minutos, segundos);
-    printf("MIPS estimados: %s\n", formattedMips);
+    guardar_acumulados(lecturas, escrituras, instrucciones);
+    guardar_tiempo(tiempo);
 
     return 0;
 }
 
-void formatNumberWithCommas(const char *numStr, char *buffer) {
-    char intPart[64], decPart[64] = "";
-    char temp[64];
+// ---------- Funciones auxiliares ----------
 
+void formatNumberWithCommas(const char *numStr, char *buffer) {
+    char intPart[128], decPart[64] = "", temp[192];
     const char *dot = strchr(numStr, '.');
     if (dot) {
-        size_t intLen = dot - numStr;
-        strncpy(intPart, numStr, intLen);
-        intPart[intLen] = '\0';
+        size_t len = dot - numStr;
+        strncpy(intPart, numStr, len); intPart[len] = '\0';
         strncpy(decPart, dot + 1, sizeof(decPart) - 1);
-    } else {
-        strcpy(intPart, numStr);
-    }
+    } else strcpy(intPart, numStr);
 
-    int len = strlen(intPart);
-    int commas = (len - 1) / 3;
-    int newLen = len + commas;
+    int len = strlen(intPart), commas = (len - 1) / 3, newLen = len + commas;
     temp[newLen] = '\0';
 
-    int i = len - 1, j = newLen - 1, count = 0;
-    while (i >= 0) {
-        temp[j--] = intPart[i--];
-        if (++count == 3 && i >= 0) {
-            temp[j--] = ',';
-            count = 0;
-        }
+    for (int i = len - 1, j = newLen - 1, c = 0; i >= 0; --i, --j) {
+        temp[j] = intPart[i];
+        if (++c == 3 && i > 0) temp[--j] = ',', c = 0;
     }
 
-    if (strlen(decPart) > 0)
-        snprintf(buffer, 64, "%s.%s", temp, decPart);
-    else
-        strcpy(buffer, temp);
+    if (*decPart) sprintf(buffer, "%s.%s", temp, decPart);
+    else strcpy(buffer, temp);
+}
+
+void guardar_acumulados(unsigned long long l, unsigned long long e, double ins) {
+    unsigned long long lOld = 0, eOld = 0; double insOld = 0;
+    leer_acumulados(&lOld, &eOld, &insOld);
+    FILE *f = fopen("acumulador.txt", "w");
+    if (f) {
+        fprintf(f, "%llu %llu %.2f\n", lOld + l, eOld + e, insOld + ins);
+        fclose(f);
+    }
+}
+
+void leer_acumulados(unsigned long long *l, unsigned long long *e, double *ins) {
+    FILE *f = fopen("acumulador.txt", "r");
+    if (f) {
+        fscanf(f, "%llu %llu %lf", l, e, ins);
+        fclose(f);
+    }
+}
+
+void guardar_tiempo(double segundos) {
+    double viejo = leer_tiempo();
+    FILE *f = fopen("tiempo.txt", "w");
+    if (f) {
+        fprintf(f, "%.2f\n", viejo + segundos);
+        fclose(f);
+    }
+}
+
+double leer_tiempo() {
+    double t = 0.0;
+    FILE *f = fopen("tiempo.txt", "r");
+    if (f) {
+        fscanf(f, "%lf", &t);
+        fclose(f);
+    }
+    return t;
 }
