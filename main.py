@@ -1,3 +1,4 @@
+# main.py
 import sys
 import subprocess
 import os
@@ -73,36 +74,48 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.ui.progressBar.setMaximum(total)
 
-        # Limpiar log antes de ejecutar
-        with open("log.txt", "w", encoding="utf-8") as f:
-            f.truncate(0)
+        tiempos = []
 
-        inicio = time.time()
+        # Resetear el acumulador (acumulador.txt, tiempo.txt)
+        subprocess.run(["mpirun", "-n", "1", "./main.exe", "--start"], check=True)
 
-        comando = ["main.exe", str(kernel), entrada, salida, str(total)]
+        for i, nombre in enumerate(imagenes):
+            inicio = time.time()
+            comando = ["mpirun", "-n", "6", "./main.exe", str(kernel), entrada, salida, nombre]
+
+            try:
+                subprocess.run(comando, check=True)
+            except subprocess.CalledProcessError as e:
+                QtWidgets.QMessageBox.critical(self, "Error", f"Error al procesar {nombre}:\n{e}")
+                return
+
+            duracion = time.time() - inicio
+            tiempos.append(duracion)
+
+            promedio = sum(tiempos) / len(tiempos)
+            restante = (total - (i + 1)) * promedio
+            minutos = int(restante) // 60
+            segundos = int(restante) % 60
+            self.ui.estimatedTime.setText(f"Tiempo estimado restante: {minutos}m {segundos}s")
+
+            self.ui.progressBar.setValue(i + 1)
+            QtWidgets.QApplication.processEvents()
+
+        # Generar reporte final acumulado
+        subprocess.run(["mpirun", "-n", "1", "./main.exe", "--end"], check=True)
+
+        # Mostrar el contenido del reporte
         try:
-            subprocess.run(comando, check=True)
-            self.ui.progressBar.setValue(total)
-        except subprocess.CalledProcessError as e:
-            QtWidgets.QMessageBox.critical(self, "Error", f"Error al procesar imágenes:\n{e}")
-            return
-
-        fin = time.time()
-        segundos = int(fin - inicio)
-        minutos = segundos // 60
-        self.ui.estimatedTime.setText(f"Tiempo total: {minutos}m {segundos % 60}s")
-
-        try:
-            with open("log.txt", "r", encoding="utf-8") as f:
+            with open("log-temp.txt", "r", encoding="utf-8") as f:
                 self.ui.txt_report.setPlainText(f.read())
         except Exception as e:
-            self.ui.txt_report.setPlainText(f"Error al leer log.txt:\n{e}")
+            self.ui.txt_report.setPlainText(f"Error al leer log-temp.txt:\n{e}")
 
         self.mostrar_imagenes_procesadas(salida)
 
     def generar_txt(self):
         try:
-            with open("log.txt", "r", encoding="utf-8") as f:
+            with open("log-temp.txt", "r", encoding="utf-8") as f:
                 contenido = f.read()
             with open("reporte_detallado.txt", "w", encoding="utf-8") as f_out:
                 f_out.write(contenido)
