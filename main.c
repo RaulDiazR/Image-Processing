@@ -12,7 +12,7 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 
-#define NUM_IMAGENES 600
+#define NUM_IMAGENES 10
 #define NUM_THREADS 6 // Per process/thread
 #define MAX_HOSTNAME 256
 
@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
 
     unsigned long long totalLecturas = 0, totalLecturasBlur = 0, totalEscrituras = 0;
     int processedImgs = 0;
-    clock_t startTime = clock();
+    double startTime = MPI_Wtime();
 
     for (int i = start; i <= end; i++) {
         char entrada[128], salida1[128], salida2[128], salida3[128], salida4[128], salida5[128], salida6[128];
@@ -168,13 +168,15 @@ int main(int argc, char *argv[]) {
         totalLecturasBlur += lecturasBlur * kernelSize * kernelSize;
         totalEscrituras += escrituras;
         processedImgs++;
-        printf("\rRango %d procesando imagen %d/%d      ", rank, processedImgs, end - start + 1);
+        double now = MPI_Wtime() - startTime;
+        printf("Rank %d en %s procesando imagen %d/1 en t=%.2f s\n", rank, hostname, i, now);
+                
         fflush(stdout);
     }
     printf("\n");
 
-    clock_t endTime = clock();
-    double localTime = (double)(endTime - startTime) / CLOCKS_PER_SEC;
+    double endTime = MPI_Wtime();
+    double localTime = endTime - startTime;
 
     unsigned long long globalLecturas = 0, globalLecturasBlur = 0, globalEscrituras = 0;
     MPI_Reduce(&totalLecturasBlur, &globalLecturasBlur, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -189,11 +191,15 @@ int main(int argc, char *argv[]) {
         unsigned long long totalAccesos = globalLecturas + globalEscrituras + globalLecturasBlur;
         double instrucciones = (double)totalAccesos * 20.0 * NUM_THREADS;
         double mips = (instrucciones / 1e6) / tiempoTotal;
-        double mbps = (double)totalAccesos / (1024.0 * 1024.0) / tiempoTotal;
+        double mbps = (double)totalAccesos / (1024.0 * 1024.0 * 1024.0) / tiempoTotal;
 
         char mipsStr[64], formattedMips[64];
         sprintf(mipsStr, "%.2f", mips);
         formatNumberWithCommas(mipsStr, formattedMips);
+        
+        char mbpsStr[64], formattedMbps[64];
+        sprintf(mbpsStr, "%.2f", mbps);
+        formatNumberWithCommas(mbpsStr, formattedMbps);
 
         char lecStr[64], escStr[64];
         sprintf(lecStr, "%llu", globalLecturas + globalLecturasBlur);
@@ -213,7 +219,7 @@ int main(int argc, char *argv[]) {
             fprintf(finalLog, "Total de localidades leídas: %s\n", formattedLecturas);
             fprintf(finalLog, "Total de localidades escritas: %s\n", formattedEscrituras);
             fprintf(finalLog, "Tiempo total de ejecución: %d minutos con %.2f segundos\n", minutes, seconds);
-            fprintf(finalLog, "Velocidad de procesamiento: %s MB/s\n", formattedMips);
+            fprintf(finalLog, "Velocidad de procesamiento: %s GB/s\n", formattedMbps);
             fprintf(finalLog, "MIPS estimados: %s\n", formattedMips);
             fclose(finalLog);
             printf("\nResumen escrito en final_log.txt\n");
