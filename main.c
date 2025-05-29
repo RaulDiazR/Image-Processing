@@ -12,7 +12,7 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 
-#define NUM_IMAGENES 10
+#define NUM_IMAGENES 600
 #define NUM_THREADS 6 // Per process/thread
 #define MAX_HOSTNAME 256
 
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
     int start = rank * imagesPerProc + 1;
     int end = (rank == size - 1) ? NUM_IMAGENES : start + imagesPerProc - 1;
 
-    const char *outputDir = "./processed_local/";
+    const char *outputDir = "./processed/";
     mkdir(outputDir, 0777);
 
     long long estimacionPorImagenProcesada = promedioTamano * 6;
@@ -142,9 +142,9 @@ int main(int argc, char *argv[]) {
     }
 
     unsigned long long totalLecturas = 0, totalLecturasBlur = 0, totalEscrituras = 0;
-    int processedImgs = 0;
     double startTime = MPI_Wtime();
 
+    int local_image_index = 1;
     for (int i = start; i <= end; i++) {
         char entrada[128], salida1[128], salida2[128], salida3[128], salida4[128], salida5[128], salida6[128];
         snprintf(entrada, sizeof(entrada), "./images/image%d.bmp", i);
@@ -167,10 +167,10 @@ int main(int argc, char *argv[]) {
         totalLecturas += lecturas;
         totalLecturasBlur += lecturasBlur * kernelSize * kernelSize;
         totalEscrituras += escrituras;
-        processedImgs++;
         double now = MPI_Wtime() - startTime;
-        printf("Rank %d en %s procesando imagen %d/1 en t=%.2f s\n", rank, hostname, i, now);
+        printf("Rank %d en %s procesando imagen %d/%d en t=%.2f s\n", rank, hostname, local_image_index, imagesPerProc, now);
                 
+        local_image_index++;
         fflush(stdout);
     }
     printf("\n");
