@@ -1,8 +1,5 @@
-# main.py
 import sys
-import subprocess
 import os
-import time
 from PyQt5 import QtWidgets, QtGui, QtCore
 from gui5 import Ui_MainWindow
 
@@ -24,6 +21,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.layout_imagenes.setSpacing(10)
 
         self.actualizar_valor_kernel(self.ui.kernel_slider.value())
+
+        # Async process for MPI
+        self.proc = QtCore.QProcess(self)
+        # merge stderr into stdout _and_ listen to all incoming bytes
+        self.proc.setProcessChannelMode(QtCore.QProcess.MergedChannels)
+        self.proc.readyRead.connect(self.handle_stdout)
+        self.proc.finished.connect(self.handle_finished)
+
+        self.progress_count = 0
+        self.total_images  = 0
 
     def seleccionar_entrada(self):
         carpeta = QtWidgets.QFileDialog.getExistingDirectory(self, "Selecciona carpeta de entrada")
@@ -49,79 +56,99 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def procesar(self):
-        self.ui.progressBar.setValue(0)
-        self.limpiar_imagenes()
-        self.ui.estimatedTime.setText("Estimando...")
-
         entrada = self.ui.carpetaEntrada.text()
-        salida = self.ui.carpetaSalida.text()
-        kernel = self.ui.kernel_slider.value()
-        if kernel % 2 == 0:
-            kernel += 1
+        salida  = self.ui.carpetaSalida.text()
+        kernel  = self.ui.kernel_slider.value() | 1  # ensure odd
 
         if not entrada or not salida:
-            QtWidgets.QMessageBox.warning(self, "Advertencia", "Debes seleccionar ambas carpetas.")
+            QtWidgets.QMessageBox.warning(self, "Advertencia",
+                                          "Debes seleccionar ambas carpetas.")
             return
 
-        if not os.path.exists(salida):
-            os.makedirs(salida)
+        os.makedirs(salida, exist_ok=True)
 
-        imagenes = sorted([f for f in os.listdir(entrada) if f.lower().endswith(".bmp")])
-        total = len(imagenes)
+        # Count .bmp files
+        bmp_files = [f for f in os.listdir(entrada) if f.lower().endswith('.bmp')]
+        total = len(bmp_files)
         if total == 0:
-            QtWidgets.QMessageBox.information(self, "Sin imágenes", "No se encontraron imágenes .bmp.")
+            QtWidgets.QMessageBox.information(self, "Sin imágenes",
+                                              "No se encontraron imágenes .bmp.")
             return
 
-        self.ui.progressBar.setMaximum(total)
+        # Setup progress
+        self.total_images  = total
+        self.progress_count = 0
+        self.ui.progressBar.setMaximum(self.total_images)
+        self.ui.progressBar.setValue(0)
+        self.ui.estimatedTime.setText(f"Imágenes procesadas: 0/{self.total_images}")
+ 
 
-        tiempos = []
 
-        # Resetear el acumulador (acumulador.txt, tiempo.txt)
-        subprocess.run(["mpirun", "-n", "1", "./main.exe", "--start"], check=True)
+        # Build command
+        hostfile = "/mirror/machinefile"
+        args = [
+            "--mca", "btl_tcp_if_include", "enp0s8",
+            "--mca", "oob_tcp_if_include", "enp0s8",
+            "--mca", "plm_rsh_no_tree_spawn", "1",
+            "--hostfile", hostfile,
+            "./my_mpi_program",
+            str(kernel), entrada, salida, str(total)
+        ]
 
-        for i, nombre in enumerate(imagenes):
-            inicio = time.time()
-            comando = ["mpirun", "-n", "6", "./main.exe", str(kernel), entrada, salida, nombre]
+        # Start async MPI job
+        self.proc.start("mpirun", args)
 
-            try:
-                subprocess.run(comando, check=True)
-            except subprocess.CalledProcessError as e:
-                QtWidgets.QMessageBox.critical(self, "Error", f"Error al procesar {nombre}:\n{e}")
-                return
+    def handle_stdout(self):
+        """
+        Called whenever *any* data arrives on stdout or stderr
+        (because we’re in MergedChannels mode and we’re using readyRead).
+        """
+        raw = self.proc.readAll()
+        text = bytes(raw).decode('utf-8', 'ignore')
+        for line in text.splitlines():
+            if not line.startswith("PROGRESS"):
+                continue
+            # bump one image
+            self.progress_count += 1
+            self.ui.progressBar.setValue(self.progress_count)
+            self.ui.estimatedTime.setText(
+                f"Imágenes procesadas: {self.progress_count}/{self.total_images}"
+            )
 
-            duracion = time.time() - inicio
-            tiempos.append(duracion)
 
-            promedio = sum(tiempos) / len(tiempos)
-            restante = (total - (i + 1)) * promedio
-            minutos = int(restante) // 60
-            segundos = int(restante) % 60
-            self.ui.estimatedTime.setText(f"Tiempo estimado restante: {minutos}m {segundos}s")
+    def handle_finished(self):
+        # drain any last PROGRESS lines that might still be in the buffer
+        self.handle_stdout()
 
-            self.ui.progressBar.setValue(i + 1)
-            QtWidgets.QApplication.processEvents()
+        # force the bar all the way
+        self.ui.progressBar.setValue(self.total_images)
+        self.ui.estimatedTime.setText(
+            f"Imágenes procesadas: {self.total_images}/{self.total_images}"
+        )
 
-        # Generar reporte final acumulado
-        subprocess.run(["mpirun", "-n", "1", "./main.exe", "--end"], check=True)
-
-        # Mostrar el contenido del reporte
-        try:
-            with open("log-temp.txt", "r", encoding="utf-8") as f:
+        # now load final_log.txt
+        log_path = os.path.join(os.getcwd(), "final_log.txt")
+        if os.path.exists(log_path):
+            with open(log_path, 'r', encoding='utf-8') as f:
                 self.ui.txt_report.setPlainText(f.read())
-        except Exception as e:
-            self.ui.txt_report.setPlainText(f"Error al leer log-temp.txt:\n{e}")
-
-        self.mostrar_imagenes_procesadas(salida)
+        else:
+            self.ui.txt_report.setPlainText("No se encontró final_log.txt")
+        # Show processed images
+        self.limpiar_imagenes()
+        self.mostrar_imagenes_procesadas(self.ui.carpetaSalida.text())
 
     def generar_txt(self):
+        log_path = os.path.join(os.getcwd(), "final_log.txt")
         try:
-            with open("log-temp.txt", "r", encoding="utf-8") as f:
+            with open(log_path, "r", encoding="utf-8") as f:
                 contenido = f.read()
             with open("reporte_detallado.txt", "w", encoding="utf-8") as f_out:
                 f_out.write(contenido)
-            QtWidgets.QMessageBox.information(self, "Reporte", "Reporte detallado guardado como 'reporte_detallado.txt'")
+            QtWidgets.QMessageBox.information(self, "Reporte",
+                                              "Reporte detallado guardado como 'reporte_detallado.txt'")
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Error", f"No se pudo guardar el reporte:\n{e}")
+            QtWidgets.QMessageBox.critical(self, "Error",
+                                           f"No se pudo guardar el reporte:\n{e}")
 
     def limpiar_imagenes(self):
         while self.layout_imagenes.count():
@@ -132,23 +159,28 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def mostrar_imagenes_procesadas(self, ruta_salida):
         bmp_files = sorted(f for f in os.listdir(ruta_salida) if f.lower().endswith(".bmp"))
-        row = 0
-        col = 0
+        row = col = 0
         for nombre in bmp_files:
             ruta = os.path.join(ruta_salida, nombre)
             label_img = QtWidgets.QLabel()
-            pixmap = QtGui.QPixmap(ruta).scaled(120, 120, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            pixmap = QtGui.QPixmap(ruta).scaled(120, 120,
+                                                QtCore.Qt.KeepAspectRatio,
+                                                QtCore.Qt.SmoothTransformation)
             label_img.setPixmap(pixmap)
             label_img.setAlignment(QtCore.Qt.AlignCenter)
+
             label_nombre = QtWidgets.QLabel(nombre)
             label_nombre.setAlignment(QtCore.Qt.AlignCenter)
             label_nombre.setWordWrap(True)
+
             contenedor = QtWidgets.QVBoxLayout()
             contenedor.setAlignment(QtCore.Qt.AlignCenter)
-            widget = QtWidgets.QWidget()
             contenedor.addWidget(label_img)
             contenedor.addWidget(label_nombre)
+
+            widget = QtWidgets.QWidget()
             widget.setLayout(contenedor)
+
             self.layout_imagenes.addWidget(widget, row, col)
             col += 1
             if col == 3:
