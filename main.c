@@ -22,8 +22,8 @@ long long calcular_promedio_tamano_imagenes(const char *directorio, int *num_ima
 int main(int argc, char *argv[]) {
     // --------- Argument parsing ---------
     int num_imagenes_total = 600;           // default total images
-    char *imagesDir      = "./images";    // default input folder
-    char *outputDir      = "./processed"; // default output folder
+    char *imagesDir      = "./images_test";    // default input folder
+    char *outputDir      = "./processed_test"; // default output folder
     int  kernelSize      = 155;            // default kernel size
 
     if (argc >= 4) {
@@ -124,13 +124,13 @@ int main(int argc, char *argv[]) {
     for (int i = start; i <= end; i++) {
         char entrada[512], salida1[512], salida2[512], salida3[512];
         char salida4[512], salida5[512], salida6[512];
-        snprintf(entrada, sizeof(entrada), "%s/image%d.bmp", imagesDir, i);
-        snprintf(salida1, sizeof(salida1), "%s/image%d_horizontal_gris.bmp", outputDir, i);
-        snprintf(salida2, sizeof(salida2), "%s/image%d_horizontal_color.bmp", outputDir, i);
-        snprintf(salida3, sizeof(salida3), "%s/image%d_vertical_gris.bmp", outputDir, i);
-        snprintf(salida4, sizeof(salida4), "%s/image%d_vertical_color.bmp", outputDir, i);
-        snprintf(salida5, sizeof(salida5), "%s/image%d_blur_kernelSize%d.bmp", outputDir, i, kernelSize);
-        snprintf(salida6, sizeof(salida6), "%s/image%d_gris.bmp", outputDir, i);
+        snprintf(entrada, sizeof(entrada), "%s/img%d.bmp", imagesDir, i);
+        snprintf(salida1, sizeof(salida1), "%s/img%d_hg.bmp", outputDir, i);
+        snprintf(salida2, sizeof(salida2), "%s/img%d_hc.bmp", outputDir, i);
+        snprintf(salida3, sizeof(salida3), "%s/img%d_vg.bmp", outputDir, i);
+        snprintf(salida4, sizeof(salida4), "%s/img%d_vc.bmp", outputDir, i);
+        snprintf(salida5, sizeof(salida5), "%s/img%d_blur_k%d.bmp", outputDir, i, kernelSize);
+        snprintf(salida6, sizeof(salida6), "%s/img%d_gris.bmp", outputDir, i);
 
         unsigned long lecturas = 0, escrituras = 0, lecturasBlur = 0;
         invertirHorizontalGrises(entrada, salida1, log, &lecturas, &escrituras);
