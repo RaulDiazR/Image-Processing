@@ -37,3 +37,33 @@
 
 # VS Code
 .vscode/
+
+# Ignorar carpetas de Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Ignorar archivos temporales del sistema
+.DS_Store
+Thumbs.db
+
+# Ignorar archivos de entorno virtual (si los usas)
+env/
+venv/
+
+# Ignorar archivos de log o temporales
+*.log
+*.tmp
+
+# Ignorar binario compilado de C
+main
+main.exe
+
+# Ignorar archivos creados por PyInstaller
+dist/
+build/
+*.spec
+
+# Ignorar archivos de log y reportes
+*.log
+*.txt
