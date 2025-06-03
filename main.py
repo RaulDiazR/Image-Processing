@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 from PyQt5 import QtWidgets, QtGui, QtCore
 from gui5 import Ui_MainWindow
 
@@ -8,6 +9,9 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+
+        # Resize window so three 120px images fit without horizontal scroll
+        self.resize(800, 600)
 
         self.ui.seleccionarCarpetaEntrada.clicked.connect(self.seleccionar_entrada)
         self.ui.seleccionarCarpetaSalida.clicked.connect(self.seleccionar_salida)
@@ -20,17 +24,25 @@ class MainWindow(QtWidgets.QMainWindow):
         self.layout_imagenes.setAlignment(QtCore.Qt.AlignTop)
         self.layout_imagenes.setSpacing(10)
 
+        # Disable horizontal scrollbar on scroll area
+        self.ui.scrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        # Ensure scrollAreaWidgetContents is wide enough for three images + spacing
+        min_width = 3 * 120 + 4 * self.layout_imagenes.spacing()
+        self.ui.scrollAreaWidgetContents.setMinimumWidth(min_width)
+
         self.actualizar_valor_kernel(self.ui.kernel_slider.value())
 
         # Async process for MPI
         self.proc = QtCore.QProcess(self)
-        # merge stderr into stdout _and_ listen to all incoming bytes
         self.proc.setProcessChannelMode(QtCore.QProcess.MergedChannels)
         self.proc.readyRead.connect(self.handle_stdout)
         self.proc.finished.connect(self.handle_finished)
 
-        self.progress_count = 0
-        self.total_images  = 0
+        self.total_images = 0
+
+        # Timer for checking ./processed
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.check_progress_folder)
 
     def seleccionar_entrada(self):
         carpeta = QtWidgets.QFileDialog.getExistingDirectory(self, "Selecciona carpeta de entrada")
@@ -65,9 +77,18 @@ class MainWindow(QtWidgets.QMainWindow):
                                           "Debes seleccionar ambas carpetas.")
             return
 
-        os.makedirs(salida, exist_ok=True)
+        # Clear previous output images
+        if os.path.isdir(salida):
+            for f in os.listdir(salida):
+                if f.lower().endswith('.bmp'):
+                    try:
+                        os.remove(os.path.join(salida, f))
+                    except Exception:
+                        pass
+        else:
+            os.makedirs(salida, exist_ok=True)
 
-        # Count .bmp files
+        # Count .bmp files in input
         bmp_files = [f for f in os.listdir(entrada) if f.lower().endswith('.bmp')]
         total = len(bmp_files)
         if total == 0:
@@ -75,67 +96,66 @@ class MainWindow(QtWidgets.QMainWindow):
                                               "No se encontraron imágenes .bmp.")
             return
 
+        self.total_images = total
         # Setup progress
-        self.total_images  = total
-        self.progress_count = 0
         self.ui.progressBar.setMaximum(self.total_images)
         self.ui.progressBar.setValue(0)
         self.ui.estimatedTime.setText(f"Imágenes procesadas: 0/{self.total_images}")
- 
 
+        # Start timer for dynamic progress update
+        self.timer.start(500)  # every 0.5 seconds for smoother updates
 
-        # Build command
         hostfile = "/mirror/machinefile"
         args = [
             "--mca", "btl_tcp_if_include", "enp0s8",
             "--mca", "oob_tcp_if_include", "enp0s8",
             "--mca", "plm_rsh_no_tree_spawn", "1",
             "--hostfile", hostfile,
-            "./my_mpi_program",
+            "./main.exe",
             str(kernel), entrada, salida, str(total)
         ]
 
-        # Start async MPI job
         self.proc.start("mpirun", args)
 
     def handle_stdout(self):
-        """
-        Called whenever *any* data arrives on stdout or stderr
-        (because we’re in MergedChannels mode and we’re using readyRead).
-        """
-        raw = self.proc.readAll()
-        text = bytes(raw).decode('utf-8', 'ignore')
-        for line in text.splitlines():
-            if not line.startswith("PROGRESS"):
-                continue
-            # bump one image
-            self.progress_count += 1
-            self.ui.progressBar.setValue(self.progress_count)
-            self.ui.estimatedTime.setText(
-                f"Imágenes procesadas: {self.progress_count}/{self.total_images}"
-            )
-
+        # Call folder check immediately on any stdout
+        self.check_progress_folder()
+        _ = self.proc.readAllStandardOutput()
 
     def handle_finished(self):
-        # drain any last PROGRESS lines that might still be in the buffer
-        self.handle_stdout()
+        # Ensure the last folder check
+        self.check_progress_folder()
+        self.timer.stop()
 
-        # force the bar all the way
         self.ui.progressBar.setValue(self.total_images)
         self.ui.estimatedTime.setText(
             f"Imágenes procesadas: {self.total_images}/{self.total_images}"
         )
 
-        # now load final_log.txt
         log_path = os.path.join(os.getcwd(), "final_log.txt")
         if os.path.exists(log_path):
             with open(log_path, 'r', encoding='utf-8') as f:
                 self.ui.txt_report.setPlainText(f.read())
         else:
             self.ui.txt_report.setPlainText("No se encontró final_log.txt")
-        # Show processed images
+
         self.limpiar_imagenes()
         self.mostrar_imagenes_procesadas(self.ui.carpetaSalida.text())
+
+    def check_progress_folder(self):
+        output_dir = self.ui.carpetaSalida.text()
+        if not os.path.isdir(output_dir):
+            return
+
+        processed_files = len([f for f in os.listdir(output_dir) if f.lower().endswith(".bmp")])
+        # Each input image produces 6 outputs
+        images_done = processed_files // 6
+        # Clamp
+        if images_done > self.total_images:
+            images_done = self.total_images
+
+        self.ui.progressBar.setValue(images_done)
+        self.ui.estimatedTime.setText(f"Imágenes procesadas: {images_done}/{self.total_images}")
 
     def generar_txt(self):
         log_path = os.path.join(os.getcwd(), "final_log.txt")
@@ -158,7 +178,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 widget.deleteLater()
 
     def mostrar_imagenes_procesadas(self, ruta_salida):
-        bmp_files = sorted(f for f in os.listdir(ruta_salida) if f.lower().endswith(".bmp"))
+        # Sort numerically by extracting leading digits
+        def extract_num(name):
+            m = re.match(r".*?(\d+)", name)
+            return int(m.group(1)) if m else float('inf')
+
+        bmp_files = sorted(
+            [f for f in os.listdir(ruta_salida) if f.lower().endswith(".bmp")],
+            key=extract_num
+        )
         row = col = 0
         for nombre in bmp_files:
             ruta = os.path.join(ruta_salida, nombre)
