@@ -144,7 +144,8 @@ int main(int argc, char *argv[]) {
         totalLecturasBlur += (unsigned long long)lecturasBlur * kernelSize * kernelSize;
         totalEscrituras   += escrituras;
 
-        fprintf(stderr, "PROGRESS %d/%d\n", i, num_imagenes_total);
+        fprintf(stderr, "Procesador %d en %s: procesando imagen %d/%d\n", 
+        rank, hostname, i, num_imagenes_total);
         fflush(stdout);
     }
     printf("\n");
@@ -193,7 +194,7 @@ int main(int argc, char *argv[]) {
             fprintf(finalLog, "Velocidad: %s GB/s\n", formattedMbps);
             fprintf(finalLog, "MIPS estimados: %s\n", formattedMips);
             fclose(finalLog);
-            printf("\nResumen escrito en final_log.txt\n");
+            // printf("\nResumen escrito en final_log.txt\n");
         } else {
             fprintf(stderr, "No se pudo escribir final_log.txt\n");
         }

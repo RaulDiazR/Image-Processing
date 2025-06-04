@@ -118,7 +118,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.proc.start("mpirun", args)
 
     def handle_stdout(self):
-        # Call folder check immediately on any stdout
+        out = self.proc.readAllStandardOutput().data().decode('utf-8', 'ignore')
+        for line in out.splitlines():
+            if line.startswith("Procesador"):
+                print(line)
         self.check_progress_folder()
         _ = self.proc.readAllStandardOutput()
 
